@@ -189,7 +189,8 @@ Mat find_qr_center(Mat src, bool debug) {
 					if (counts[state] > counts[1] * lowFactor - 1) {
 						state = 0;
 						counts[0] = counts[6];
-						centers.push_back(Point(x - counts[6] - counts[5] - counts[4] - counts[3] / 2, y));
+						if (verify_y(binary, y, x - counts[6] - counts[5] - counts[4] - counts[3] / 2, lowFactor, highFactor))
+							centers.push_back(Point(x - counts[6] - counts[5] - counts[4] - counts[3] / 2, y));
 					}
 				}
 				else {
@@ -264,6 +265,87 @@ Mat find_qr_center(Mat src, bool debug) {
 	}
 
 	return res;
+}
+
+
+//Takes a point and checks it in the y direction.
+bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor) {
+	int counts[7] = { 0 };
+	int y = cy;
+	// Each logic block corresponds to a band. Note that there are two for the middle, as we start at
+	// an indeterminate point in the center of the pattern.
+	// Each block has the condition to continue (colour change, or for borders minimum size)
+	// as well as conditions which immediately disqualify the pattern (extend off image borders, sizes not consistent)
+	while (binary.at<uchar>(y, cx) == 0) {
+		counts[3]++;
+		--y;
+		if (y < 0)
+			return false;
+	}
+
+	while (binary.at<uchar>(y, cx) == 255) {
+		counts[2]++;
+		--y;
+		if (y < 0)
+			return false;
+	}
+
+	while (binary.at<uchar>(y, cx) == 0) {
+		counts[1]++;
+		--y;
+		if (y < 0)
+			return false;
+	}
+	if (counts[1] * lowFactor - 1 > counts[2] || counts[1] * highFactor + 1 < counts[2])
+		return false;
+
+	while (binary.at<uchar>(y, cx) == 255) {
+		counts[0]++;
+		--y;
+		if (counts[0] > counts[1] * lowFactor - 1)
+			break;
+		if (y < 0)
+			return false;
+	}
+
+	y = cy + 1;
+	while (binary.at<uchar>(y, cx) == 0) {
+		counts[3]++;
+		++y;
+		if (y >= binary.rows)
+			return false;
+	}
+	if (counts[1] * lowFactor * 3 - 3 > counts[3] || counts[1] * highFactor * 3 + 3 < counts[3])
+		return false;
+
+	while (binary.at<uchar>(y, cx) == 255) {
+		counts[4]++;
+		++y;
+		if (y >= binary.rows)
+			return false;
+	}
+	if (counts[1] * lowFactor - 1 > counts[4] || counts[1] * highFactor + 1 < counts[4])
+		return false;
+
+	while (binary.at<uchar>(y, cx) == 0) {
+		counts[5]++;
+		++y;
+		if (y >= binary.rows)
+			return false;
+	}
+	if (counts[1] * lowFactor - 1 > counts[5] || counts[1] * highFactor + 1 < counts[5])
+		return false;
+
+	while (binary.at<uchar>(y, cx) == 255) {
+		counts[6]++;
+		++y;
+		if (counts[6] > counts[1] * lowFactor - 1)
+			return true;
+		if (y >= binary.rows)
+			return false;
+	}
+	// Last white band is too small
+	return false;
 }
 
 
