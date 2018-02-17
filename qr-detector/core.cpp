@@ -38,7 +38,7 @@ Mat find_qr_center(Mat src, bool debug) {
 	Mat res = src.clone();
 	Mat binary = binarize_image(src);
 	Mat states = Mat::zeros(src.rows, src.cols, CV_8UC1);
-	std::vector<Point> centers;
+	std::vector<Qr_point> centers;
 	// QR pattern, starting on white: 1/1/1/3/1/1/1
 	// As we scan the image, we will use a state machine for where we are in the QR seqeuence
 	// Counts stores the number of pixels in each band
@@ -189,8 +189,22 @@ Mat find_qr_center(Mat src, bool debug) {
 					if (counts[state] > counts[1] * lowFactor - 1) {
 						state = 0;
 						counts[0] = counts[6];
-						if (verify_y(binary, y, x - counts[6] - counts[5] - counts[4] - counts[3] / 2, lowFactor, highFactor))
-							centers.push_back(Point(x - counts[6] - counts[5] - counts[4] - counts[3] / 2, y));
+
+						Qr_point center;
+						center.x = x - counts[6] - counts[5] - counts[4] - counts[3] / 2;
+						center.xCenterWidth = counts[3];
+						if (verify_y(binary, y, x - counts[6] - counts[5] - counts[4] - counts[3] / 2, lowFactor, highFactor, &center)) {
+							// Check if the point is a new one or not.
+							bool newPoint = true;
+							for (int i = 0; i < centers.size() && newPoint; ++i) {
+								if (centers[i].x - centers[i].xCenterWidth  < center.x && centers[i].x + centers[i].xCenterWidth > center.x) {
+									if (centers[i].y - centers[i].yCenterWidth < center.y && centers[i].y + centers[i].yCenterWidth > center.y)
+										newPoint = false;
+								}
+							}
+							if (newPoint)
+								centers.push_back(center);
+						}
 					}
 				}
 				else {
@@ -218,17 +232,17 @@ Mat find_qr_center(Mat src, bool debug) {
 	// Tracker tracks which pixels we've added to the heap already (don't go in circles)
 	Mat tracker = Mat::zeros(binary.rows, binary.cols, CV_8UC1);
 	for (int i = 0; i < centers.size(); ++i){
-		Point p = centers[i];
-		int x0 = p.x;
-		int y0 = p.y;
+		Qr_point qrp = centers[i];
+		int x0 = qrp.x;
+		int y0 = qrp.y;
 		std::vector<Point> heap;
 		// skip if we've already marked the point
-		if (tracker.at<uchar>(p) == 1)
+		if (tracker.at<uchar>(qrp.y, qrp.x) == 1)
 			continue;
-		heap.push_back(p);
+		heap.push_back(Point(qrp.x, qrp.y));
 		while (heap.size() > 0) {
 			// Colour the next point
-			p = heap[heap.size() - 1];
+			Point p = heap[heap.size() - 1];
 			heap.pop_back();
 			res.at<Vec3b>(p)[0] = targ0;
 			res.at<Vec3b>(p)[1] = targ1;
@@ -237,7 +251,7 @@ Mat find_qr_center(Mat src, bool debug) {
 			// Don't check for adjacent pixels if too far away from the original marked pixel
 			// Not very clean, but prevents this part from traversing a large block of the image
 			// (big performance hit) if a mistake is made earlier.
-			if (abs(x0 - p.x) > 15 || abs(y0 - p.y) > 1)
+			if (abs(x0 - p.x) > 5 || abs(y0 - p.y) > 5)
 				continue;
 
 			// Search for any adjacent points (checking for bounds and repeats)
@@ -268,16 +282,20 @@ Mat find_qr_center(Mat src, bool debug) {
 }
 
 
-//Takes a point and checks it in the y direction.
-bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor) {
+// Takes a point and checks it in the y direction.
+// Also fills out the centerObj y information
+bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor, Qr_point * centerObj) {
 	int counts[7] = { 0 };
 	int y = cy;
+	int centerCountsAbove = 0;
+	int centerCountsBelow = 0;
 	// Each logic block corresponds to a band. Note that there are two for the middle, as we start at
 	// an indeterminate point in the center of the pattern.
 	// Each block has the condition to continue (colour change, or for borders minimum size)
 	// as well as conditions which immediately disqualify the pattern (extend off image borders, sizes not consistent)
 	while (binary.at<uchar>(y, cx) == 0) {
 		counts[3]++;
+		centerCountsAbove++;
 		--y;
 		if (y < 0)
 			return false;
@@ -311,6 +329,7 @@ bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor) {
 	y = cy + 1;
 	while (binary.at<uchar>(y, cx) == 0) {
 		counts[3]++;
+		centerCountsBelow++;
 		++y;
 		if (y >= binary.rows)
 			return false;
@@ -339,13 +358,22 @@ bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor) {
 	while (binary.at<uchar>(y, cx) == 255) {
 		counts[6]++;
 		++y;
-		if (counts[6] > counts[1] * lowFactor - 1)
+		if (counts[6] > counts[1] * lowFactor - 1) {
+			centerObj->y = cy + (centerCountsBelow - centerCountsAbove) / 2;
+			centerObj->yCenterWidth = counts[3];
 			return true;
+		}
 		if (y >= binary.rows)
 			return false;
 	}
 	// Last white band is too small
 	return false;
+}
+
+
+// Returns the integer value of the point that is the "middle" point
+int join_points(Mat img, Qr_point p1, Qr_point p2, Qr_point p3) {
+
 }
 
 
