@@ -1,5 +1,6 @@
 #include "core.h"
 #include <string>
+#include <math.h>
 
 int main() {
 	//img_test();
@@ -12,6 +13,8 @@ int main() {
 		// Get the most recent image from the webcam
 		Mat frame;
 		cam.read(frame);
+		while (frame.empty())
+			cam.read(frame);
 
 		Mat marked = find_qr_center(frame, true);
 		//imwrite("C:/Workspace/" + std::to_string(counter) + std::string(".jpg"), frame);
@@ -62,9 +65,12 @@ Mat find_qr_center(Mat src, bool debug) {
 					counts[state]++;
 				}
 				else {
-					if (counts[state] > 0) {
+					if (counts[state] > 2) {		//***This provides a minimum size of detection
 						state++;
 						counts[state] = 1;
+					}
+					else {
+						counts[state] = 0;
 					}
 				}
 				states.at<uchar>(y, x) = 0;
@@ -214,13 +220,17 @@ Mat find_qr_center(Mat src, bool debug) {
 				states.at<uchar>(y, x) = 200;
 				break;
 			default:
-				std::cout << "Error: states in core/find_qr_centers reached unexpected value\n";
+				std::cout << "Error: states in core/find_qr_centers reached unexpected value "<< state << "\n";
+				state = 0;
+				counts[0] = 0;
 			}
 		}
 	}
 
 	if (debug && centers.size() > 0) {
-		std::cout << "Debug: found " << centers.size() << " centers\n";
+		std::cout << "Debug: found " << centers.size() << " centers, ";
+		std::cout << "first point at angle " << orient_point(binary, centers[0]) << "\n";
+		block_finder(centers[0], src);
 	}
 
 	// Sets the colour we will mark the points we found as
@@ -251,7 +261,7 @@ Mat find_qr_center(Mat src, bool debug) {
 			// Don't check for adjacent pixels if too far away from the original marked pixel
 			// Not very clean, but prevents this part from traversing a large block of the image
 			// (big performance hit) if a mistake is made earlier.
-			if (abs(x0 - p.x) > 5 || abs(y0 - p.y) > 5)
+			if (abs(x0 - p.x) > 15 || abs(y0 - p.y) > 15)
 				continue;
 
 			// Search for any adjacent points (checking for bounds and repeats)
@@ -371,9 +381,130 @@ bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor, Q
 }
 
 
-// Returns the integer value of the point that is the "middle" point
-int join_points(Mat img, Qr_point p1, Qr_point p2, Qr_point p3) {
+// Simplified locator method that finds the distance and displacement to the code
+// Assumes it is looking for a block sitting flat on the same plane as the camera
+void block_finder(Qr_point qp, Mat img) {
+	double fovX = 40;
+	double fovY = 22.5;
+	double targetSize = 0.8; // qr center, in cm
+	int overshoot = 15;	//Tells the arm to go this many cm past where the target is
+	int xDisplace = 0;	//Camera is this many cm to the right the base of the arm, viewed from behind
+	int yDisplace = 0;
+	int zDisplace = 0;
+	double pi = 3.14159265358979323;
 
+	// Distance is a simple calculation using the y component of the center size.
+	double dist = targetSize / (double(qp.yCenterWidth) / img.rows * fovY * pi / 180);
+
+	double theta = (fovX / img.cols * qp.x) - (fovX / 2);
+	double phi = 0 - ((fovY / img.rows * qp.y) - (fovY / 2));
+
+	double y = dist * cos(theta * pi / 180) * cos(phi * pi / 180) - yDisplace;
+	double x = dist * sin(theta * pi / 180) * cos(phi * pi / 180) - xDisplace;
+	double z = dist * cos(theta * pi / 180) * sin(phi * pi / 180) - zDisplace;
+
+	std::cout << "Distance: " << dist << "  X: " << x << "  Y: " << y << "  Z: " << z << "\n";
+}
+
+
+// TODO: can be used to locate the point in 3d space
+void locate_point(Mat binary, Qr_point qp) {
+	// tracks the points we've already added to the heap (to avoid going in circles)
+	// todo: big tracker for a little traversal. Room for optimization here. Entire traversal could probably be optimized away with some effort.
+	Mat tracker = Mat::zeros(binary.size(), CV_8UC1);
+	// Tracks which adjacent points we still need to visit
+	std::vector<Point> movingHeap;
+	// Tracks all points we have visited. This will get fed into the bounding rectangle function
+	std::vector<Point> histHeap;
+	// initialize our first point on the heap
+	movingHeap.push_back(Point(qp.x, qp.y));
+	while (movingHeap.size() > 0) {
+		// Save the point
+		Point p = movingHeap[movingHeap.size() - 1];
+		movingHeap.pop_back();
+		histHeap.push_back(p);
+		// Look at adjacent points
+		Point points[4];
+		points[0] = Point(p.x + 1, p.y);
+		points[1] = Point(p.x - 1, p.y);
+		points[2] = Point(p.x, p.y + 1);
+		points[3] = Point(p.x, p.y - 1);
+		for (int i = 0; i < 4; ++i) {
+			// Skip if outside of bounds
+			if (points[i].x < 0 || points[i].x >= binary.cols || points[i].y < 0 || points[i].y > binary.rows)
+				continue;
+			// Add adjacent points if valid and not yet looked at
+			if (tracker.at<uchar>(points[i]) == 0 && binary.at<uchar>(points[i]) == 0) {
+				tracker.at<uchar>(points[i]) = 1;
+				movingHeap.push_back(points[i]);
+			}
+		}
+	}
+	RotatedRect rectPoints = minAreaRect(histHeap);
+	double zrot = 0 - rectPoints.angle;
+	double yrot;
+	double xrot;
+	double dist;
+	int displaceX;
+	int displaceY;
+}
+
+/*
+Qr_code join_points(Mat binary, Qr_point p1, Qr_point p2, Qr_point p3) {
+	double p1orient = orient_point(binary, p1);
+	double angleToP2 = angle_between_points(p1.x, p2.x, p1.y, p2.y);
+	double angleToP3 = angle_between_points(p1.x, p3.x, p1.y, p3.y);
+	double p2Relative = angleToP2 - p1orient;
+	double p2PerpVal = int(p2Relative + 90) % 90;
+	double p3Relative = angleToP3 - p1orient;
+	double p3PerpVal = int(p3Relative + 90) % 90;
+	//TODO
+}*/
+
+
+double angle_between_points(int x1, int x2, int y1, int y2) {
+	int deltaY = y1 - y2;	//Inversed because we want an "up" change positive, but are counting down
+	int deltaX = x2 - x1;
+	return atan2(deltaY, deltaX) * 180 / 3.141592653589793238462643;	//convert to degrees
+}
+
+
+// Gives the rotation clockwise from "no rotation" in degrees (0-90 due to radial symmetry)
+// Depreciated, included in locate_point above
+double orient_point(Mat binary, Qr_point qp) {
+	// tracks the points we've already added to the heap (to avoid going in circles)
+	// todo: big tracker for a little traversal. Room for optimization here. Entire traversal could probably be optimized away with some effort.
+	Mat tracker = Mat::zeros(binary.size(), CV_8UC1);
+	// Tracks which adjacent points we still need to visit
+	std::vector<Point> movingHeap;
+	// Tracks all points we have visited. This will get fed into the bounding rectangle function
+	std::vector<Point> histHeap;
+	// initialize our first point on the heap
+	movingHeap.push_back(Point(qp.x, qp.y));
+	while (movingHeap.size() > 0) {
+		// Save the point
+		Point p = movingHeap[movingHeap.size() - 1];
+		movingHeap.pop_back();
+		histHeap.push_back(p);
+		// Look at adjacent points
+		Point points[4];
+		points[0] = Point(p.x + 1, p.y);
+		points[1] = Point(p.x - 1, p.y);
+		points[2] = Point(p.x, p.y + 1);
+		points[3] = Point(p.x, p.y - 1);
+		for (int i = 0; i < 4; ++i) {
+			// Skip if outside of bounds
+			if (points[i].x < 0 || points[i].x >= binary.cols || points[i].y < 0 || points[i].y >= binary.rows)
+				continue;
+			// Add adjacent points if valid and not yet looked at
+			if (tracker.at<uchar>(points[i]) == 0 && binary.at<uchar>(points[i]) == 0) {
+				tracker.at<uchar>(points[i]) = 1;
+				movingHeap.push_back(points[i]);
+			}
+		}
+	}
+	RotatedRect rectPoints = minAreaRect(histHeap);
+	return 0 - rectPoints.angle;
 }
 
 
@@ -384,7 +515,7 @@ Mat binarize_image(Mat colImg) {
 	Mat grey;
 	Mat binary;
 	cvtColor(colImg, grey, CV_BGR2GRAY);
-	threshold(grey, binary, 100, 255, THRESH_BINARY);
+	threshold(grey, binary, 150, 255, THRESH_BINARY);
 	return binary;
 }
 
