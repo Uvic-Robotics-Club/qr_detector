@@ -238,6 +238,60 @@ Mat find_qr_center(Mat src, bool debug) {
 	int targ1 = 255;
 	int targ2 = 255;
 
+	//Mark our image
+	for (int i = 0; i < centers.size(); ++i) {
+		Qr_point qrp = centers[i];
+		//go right
+		for (int x = qrp.x, changes = 0, y = qrp.y; x < qrp.x + qrp.xCenterWidth * 2; ++x) {
+			if (changes == 0 && binary.at<uchar>(y, x) == 255)
+				changes++;
+			else if (changes == 1 && binary.at<uchar>(y, x) == 0)
+				changes++;
+			else if (changes == 2 && binary.at<uchar>(y, x) == 255)
+				break;
+			res.at<Vec3b>(y, x)[0] = targ0;
+			res.at<Vec3b>(y, x)[1] = targ1;
+			res.at<Vec3b>(y, x)[2] = targ2;
+		}
+		//go left
+		for (int x = qrp.x, changes = 0, y = qrp.y; x > qrp.x - qrp.xCenterWidth * 2; --x) {
+			if (changes == 0 && binary.at<uchar>(y, x) == 255)
+				changes++;
+			else if (changes == 1 && binary.at<uchar>(y, x) == 0)
+				changes++;
+			else if (changes == 2 && binary.at<uchar>(y, x) == 255)
+				break;
+			res.at<Vec3b>(y, x)[0] = targ0;
+			res.at<Vec3b>(y, x)[1] = targ1;
+			res.at<Vec3b>(y, x)[2] = targ2;
+		}
+		//go down
+		for (int x = qrp.x, changes = 0, y = qrp.y; y < qrp.y + qrp.yCenterWidth * 2; ++y) {
+			if (changes == 0 && binary.at<uchar>(y, x) == 255)
+				changes++;
+			else if (changes == 1 && binary.at<uchar>(y, x) == 0)
+				changes++;
+			else if (changes == 2 && binary.at<uchar>(y, x) == 255)
+				break;
+			res.at<Vec3b>(y, x)[0] = targ0;
+			res.at<Vec3b>(y, x)[1] = targ1;
+			res.at<Vec3b>(y, x)[2] = targ2;
+		}
+		//go up
+		for (int x = qrp.x, changes = 0, y = qrp.y; y > qrp.y - qrp.yCenterWidth * 2; --y) {
+			if (changes == 0 && binary.at<uchar>(y, x) == 255)
+				changes++;
+			else if (changes == 1 && binary.at<uchar>(y, x) == 0)
+				changes++;
+			else if (changes == 2 && binary.at<uchar>(y, x) == 255)
+				break;
+			res.at<Vec3b>(y, x)[0] = targ0;
+			res.at<Vec3b>(y, x)[1] = targ1;
+			res.at<Vec3b>(y, x)[2] = targ2;
+		}
+	}
+
+	/*
 	// Go to the saved points, and do a traversal of all connected black pixels. Mark them all the target colour above
 	// Tracker tracks which pixels we've added to the heap already (don't go in circles)
 	Mat tracker = Mat::zeros(binary.rows, binary.cols, CV_8UC1);
@@ -278,7 +332,7 @@ Mat find_qr_center(Mat src, bool debug) {
 				}
 			}
 		}
-	}
+	}*/
 	//Display the images if debugging and wait for a keypress
 	if (debug) {
 		imshow("Source", src);
@@ -515,7 +569,7 @@ Mat binarize_image(Mat colImg) {
 	Mat grey;
 	Mat binary;
 	cvtColor(colImg, grey, CV_BGR2GRAY);
-	threshold(grey, binary, 150, 255, THRESH_BINARY);
+	threshold(grey, binary, 125, 255, THRESH_BINARY);
 	return binary;
 }
 
