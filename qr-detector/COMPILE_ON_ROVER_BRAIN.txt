@@ -1,0 +1,1 @@
+g++ <filename> -o <filename_out> `pkg-config --cflags --libs opencv-3.3.1`

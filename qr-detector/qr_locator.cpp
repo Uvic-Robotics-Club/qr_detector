@@ -1,9 +1,8 @@
-#include "core.h"
+#include "qr_locator.h"
 #include <string>
 #include <math.h>
 
 int main() {
-	//img_test();
 	// Set up the system default webcam (the '0' in the constructor)
 	// Should be cross-platform
 	VideoCapture cam(0);
@@ -22,6 +21,12 @@ int main() {
 		counter++;
 	}
 	return 0;
+}
+
+
+void callback(Mat frame) {
+	Mat marked = find_qr_center(frame, false);
+	//publish marked
 }
 
 
@@ -290,50 +295,11 @@ Mat find_qr_center(Mat src, bool debug) {
 			res.at<Vec3b>(y, x)[2] = targ2;
 		}
 	}
-
-	/*
-	// Go to the saved points, and do a traversal of all connected black pixels. Mark them all the target colour above
-	// Tracker tracks which pixels we've added to the heap already (don't go in circles)
-	Mat tracker = Mat::zeros(binary.rows, binary.cols, CV_8UC1);
-	for (int i = 0; i < centers.size(); ++i){
-		Qr_point qrp = centers[i];
-		int x0 = qrp.x;
-		int y0 = qrp.y;
-		std::vector<Point> heap;
-		// skip if we've already marked the point
-		if (tracker.at<uchar>(qrp.y, qrp.x) == 1)
-			continue;
-		heap.push_back(Point(qrp.x, qrp.y));
-		while (heap.size() > 0) {
-			// Colour the next point
-			Point p = heap[heap.size() - 1];
-			heap.pop_back();
-			res.at<Vec3b>(p)[0] = targ0;
-			res.at<Vec3b>(p)[1] = targ1;
-			res.at<Vec3b>(p)[2] = targ2;
-
-			// Don't check for adjacent pixels if too far away from the original marked pixel
-			// Not very clean, but prevents this part from traversing a large block of the image
-			// (big performance hit) if a mistake is made earlier.
-			if (abs(x0 - p.x) > 15 || abs(y0 - p.y) > 15)
-				continue;
-
-			// Search for any adjacent points (checking for bounds and repeats)
-			for (int y = p.y - 1; y <= p.y + 1; ++y) {
-				if (y < 0 || y >= res.rows)
-					continue;
-				for (int x = p.x - 1; x <= p.x + 1; ++x) {
-					if (x < 0 || x >= res.cols)
-						continue;
-					if (tracker.at<uchar>(y, x) == 0 && binary.at<uchar>(y, x) == 0) {
-						heap.push_back(Point(x, y));
-						tracker.at<uchar>(y, x) = 1;
-					}
-				}
-			}
-		}
-	}*/
-	//Display the images if debugging and wait for a keypress
+	if (centers.size() > 0) {
+		putText(res, block_finder(centers[centers.size() - 1], res), Point(25, res.rows - 25), FONT_HERSHEY_COMPLEX_SMALL, 0.7, cvScalar(0, 0, 0));
+	}
+	
+	// If debugging, display the images and wait for a keypress
 	if (debug) {
 		imshow("Source", src);
 		imshow("Binary", binary);
@@ -437,7 +403,7 @@ bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor, Q
 
 // Simplified locator method that finds the distance and displacement to the code
 // Assumes it is looking for a block sitting flat on the same plane as the camera
-void block_finder(Qr_point qp, Mat img) {
+std::string block_finder(Qr_point qp, Mat img) {
 	double fovX = 40;
 	double fovY = 22.5;
 	double targetSize = 0.8; // qr center, in cm
@@ -457,7 +423,15 @@ void block_finder(Qr_point qp, Mat img) {
 	double x = dist * sin(theta * pi / 180) * cos(phi * pi / 180) - xDisplace;
 	double z = dist * cos(theta * pi / 180) * sin(phi * pi / 180) - zDisplace;
 
-	std::cout << "Distance: " << dist << "  X: " << x << "  Y: " << y << "  Z: " << z << "\n";
+	std::string data = "Distance: ";
+	data.append(std::to_string(dist));
+	data.append("  X: ");
+	data.append(std::to_string(x));
+	data.append("  Y: ");
+	data.append(std::to_string(y));
+	data.append("  Z: ");
+	data.append(std::to_string(z));
+	return data;
 }
 
 

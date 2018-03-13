@@ -113,13 +113,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="core.h" />
+    <ClInclude Include="qr_locator.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="core.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="qr-detector.rc" />
+    <ClCompile Include="qr_locator.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
