@@ -296,7 +296,7 @@ Mat find_qr_center(Mat src, bool debug) {
 		}
 	}
 	if (centers.size() > 0) {
-		putText(res, block_finder(centers[centers.size() - 1], res), Point(25, res.rows - 25), FONT_HERSHEY_COMPLEX_SMALL, 0.7, cvScalar(0, 0, 0));
+		putText(res, block_finder(centers[centers.size() - 1], res), Point(25, res.rows - 25), FONT_HERSHEY_COMPLEX_SMALL, 0.7, Scalar(0, 0, 0));
 	}
 	
 	// If debugging, display the images and wait for a keypress
@@ -542,7 +542,7 @@ double orient_point(Mat binary, Qr_point qp) {
 Mat binarize_image(Mat colImg) {
 	Mat grey;
 	Mat binary;
-	cvtColor(colImg, grey, CV_BGR2GRAY);
+	cvtColor(colImg, grey, COLOR_BGR2GRAY);
 	threshold(grey, binary, 125, 255, THRESH_BINARY);
 	return binary;
 }
