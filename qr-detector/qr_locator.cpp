@@ -2,6 +2,13 @@
 #include <string>
 #include <math.h>
 
+// lmr MAJOR THINGS TO BE WORKED ON:
+// Binarized image.
+// Adaptive Threshold.
+// Finding the orientation of the box give only one qr code (that's a lot more mathy, and located in locate_point, which is a method that greg made). 
+//		- This is largely about finding the corners, so you know how twisted it is around the center point
+//      - Also, you can use the shape/ratio of the line thicknesses between the vertical and horizontal detection to tell how off-normal the face is (turned away from you). 
+
 int main() {
 	// Set up the system default webcam (the '0' in the constructor)
 	// Should be cross-platform
@@ -10,12 +17,12 @@ int main() {
 	int counter = 0;
 	while (true) {
 		// Get the most recent image from the webcam
-		Mat frame;
+		Mat frame;  // lmr: Mat = multidimensional matrix. Notably starts with y, then x.
 		cam.read(frame);
-		while (frame.empty())
+		while (frame.empty())   // lmr: this is will keep trying to get an image from the camera until it is successful at getting an image
 			cam.read(frame);
 
-		Mat marked = find_qr_center(frame, true);
+		Mat marked = find_qr_center(frame, true);   // lmr: "frame" is the image that's been collected from above code. 
 		//imwrite("C:/Workspace/" + std::to_string(counter) + std::string(".jpg"), frame);
 
 		counter++;
@@ -42,11 +49,11 @@ void img_test() {
 // TODO: this method is too long. Extract state machine, and make an independent method
 // This also means the verification (running in the y-direction instead of x) can be done using the same
 // code with a simple image transpose
-Mat find_qr_center(Mat src, bool debug) {
-	Mat res = src.clone();
-	Mat binary = binarize_image(src);
-	Mat states = Mat::zeros(src.rows, src.cols, CV_8UC1);
-	std::vector<Qr_point> centers;
+Mat find_qr_center(Mat src, bool debug) { // lmr: src = source, drc = destination (commonly).
+	Mat res = src.clone();  // lmr: this is a deep copy, which is actually creating a seperate copy that cant be edited by editing the original (unlike pointing to the same object)
+	Mat binary = binarize_image(src);   // lmr: returns binary image
+	Mat states = Mat::zeros(src.rows, src.cols, CV_8UC1); // lmr: CV_8UC1 is a code for how much memory is stored in each pixel (8 = length, U= unsigned, C = character, 1 = # of channels)
+	std::vector<Qr_point> centers; // lmr: a list of things with an undifined length. Of type "Qr_point", called centers. Stores every center point of all qr codes that are seen in the image.
 	// QR pattern, starting on white: 1/1/1/3/1/1/1
 	// As we scan the image, we will use a state machine for where we are in the QR seqeuence
 	// Counts stores the number of pixels in each band
@@ -240,21 +247,22 @@ Mat find_qr_center(Mat src, bool debug) {
 
 	// Sets the colour we will mark the points we found as
 	int targ0 = 0;
-	int targ1 = 255;
+	int targ1 = 255;  // lmr: this one and below are blue and green, making the cross we see yellow.
 	int targ2 = 255;
 
-	//Mark our image
+	//Mark our image (lmr: the yellow cross is what we're calling the mark)
+	
 	for (int i = 0; i < centers.size(); ++i) {
 		Qr_point qrp = centers[i];
 		//go right
 		for (int x = qrp.x, changes = 0, y = qrp.y; x < qrp.x + qrp.xCenterWidth * 2; ++x) {
-			if (changes == 0 && binary.at<uchar>(y, x) == 255)
+			if (changes == 0 && binary.at<uchar>(y, x) == 255) // lmr: 
 				changes++;
 			else if (changes == 1 && binary.at<uchar>(y, x) == 0)
 				changes++;
 			else if (changes == 2 && binary.at<uchar>(y, x) == 255)
 				break;
-			res.at<Vec3b>(y, x)[0] = targ0;
+			res.at<Vec3b>(y, x)[0] = targ0;  // lmr: this is accessing specific positions and changing their colour to targ (which is stated above)
 			res.at<Vec3b>(y, x)[1] = targ1;
 			res.at<Vec3b>(y, x)[2] = targ2;
 		}
@@ -295,8 +303,9 @@ Mat find_qr_center(Mat src, bool debug) {
 			res.at<Vec3b>(y, x)[2] = targ2;
 		}
 	}
+	
 	if (centers.size() > 0) {
-		putText(res, block_finder(centers[centers.size() - 1], res), Point(25, res.rows - 25), FONT_HERSHEY_COMPLEX_SMALL, 0.7, Scalar(0, 0, 0));
+		putText(res, block_finder(centers[centers.size() - 1], res), Point(25, res.rows - 25), FONT_HERSHEY_COMPLEX_SMALL, 0.7, Scalar(0, 0, 0));  // lmr: this is a method (method names are supposed to have underscores for the robotics club) that displays text.
 	}
 	
 	// If debugging, display the images and wait for a keypress
@@ -403,7 +412,7 @@ bool verify_y(Mat binary, int cy, int cx, double lowFactor, double highFactor, Q
 
 // Simplified locator method that finds the distance and displacement to the code
 // Assumes it is looking for a block sitting flat on the same plane as the camera
-std::string block_finder(Qr_point qp, Mat img) {
+std::string block_finder(Qr_point qp, Mat img) {  
 	double fovX = 40;
 	double fovY = 22.5;
 	double targetSize = 0.8; // qr center, in cm
@@ -423,7 +432,7 @@ std::string block_finder(Qr_point qp, Mat img) {
 	double x = dist * sin(theta * pi / 180) * cos(phi * pi / 180) - xDisplace;
 	double z = dist * cos(theta * pi / 180) * sin(phi * pi / 180) - zDisplace;
 
-	std::string data = "Distance: ";
+	std::string data = "Distance: "; 
 	data.append(std::to_string(dist));
 	data.append("  X: ");
 	data.append(std::to_string(x));
@@ -436,7 +445,7 @@ std::string block_finder(Qr_point qp, Mat img) {
 
 
 // TODO: can be used to locate the point in 3d space
-void locate_point(Mat binary, Qr_point qp) {
+void locate_point(Mat binary, Qr_point qp) {  // lmr: this is trying to determine the qr code's orientation (twist in 2 directions), but the code below IS INCOMPLETE
 	// tracks the points we've already added to the heap (to avoid going in circles)
 	// todo: big tracker for a little traversal. Room for optimization here. Entire traversal could probably be optimized away with some effort.
 	Mat tracker = Mat::zeros(binary.size(), CV_8UC1);
